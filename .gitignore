@@ -56,3 +56,7 @@ Thumbs.db
 # Misc
 .emergent/
 .git/
+-e 
+# Environment files
+*.env
+*.env.*
