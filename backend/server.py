@@ -11,6 +11,9 @@ import uuid
 from datetime import datetime, timezone, time
 import json
 from dateutil import parser as date_parser
+from openai import OpenAI
+import os
+
 
 
 ROOT_DIR = Path(__file__).parent
