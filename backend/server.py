@@ -146,8 +146,8 @@ class CampusAIAgent:
 Analyze the user's message and classify it into one of these intents:
 - EVENTS_QUERY: User asking about events, seminars, workshops
 - FACILITY_QUERY: User asking about rooms, labs, facilities availability
-- BOOKING_REQUEST: User wants to book a facility or register for event
-- CONFIRMATION: User confirming or denying a previous action
+- BOOKING_REQUEST: User wants to book a facility or register for event (includes phrases like "book", "reserve", "I want to")
+- CONFIRMATION: User confirming or denying a previous action (includes "yes", "confirm", "proceed", "ok", "no", "cancel")
 - GENERAL: General questions about campus
 
 Return ONLY a JSON object with this structure:
@@ -161,7 +161,9 @@ Return ONLY a JSON object with this structure:
         "keywords": ["<relevant keywords>"]
     },
     "confidence": <0.0 to 1.0>
-}"""
+}
+
+Do not include any explanation or additional text, only the JSON object."""
         
         chat = LlmChat(
             api_key=self.api_key,
@@ -173,8 +175,16 @@ Return ONLY a JSON object with this structure:
         response = await chat.send_message(user_message)
         
         try:
+            # Try to extract JSON from response
+            response_text = response.strip()
+            # Remove markdown code blocks if present
+            if response_text.startswith("```json"):
+                response_text = response_text.split("```json")[1].split("```")[0].strip()
+            elif response_text.startswith("```"):
+                response_text = response_text.split("```")[1].split("```")[0].strip()
+            
             # Parse JSON response
-            intent_data = json.loads(response)
+            intent_data = json.loads(response_text)
             return intent_data
         except json.JSONDecodeError:
             # Fallback
