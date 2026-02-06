@@ -4,14 +4,15 @@ from motor.motor_asyncio import AsyncIOMotorClient
 from dotenv import load_dotenv
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 import os
 import uuid
 import json
 import logging
+import re
 from datetime import datetime, timezone
 
-from openai import OpenAI
+from groq import Groq
 
 
 # ================= ENV =================
@@ -21,9 +22,9 @@ load_dotenv(ROOT_DIR / ".env")
 
 MONGO_URL = os.environ["MONGO_URL"]
 DB_NAME = os.environ["DB_NAME"]
-OPENAI_API_KEY = os.environ["OPENAI_API_KEY"]
+GROQ_API_KEY = os.environ["GROQ_API_KEY"]
 
-client_openai = OpenAI(api_key=OPENAI_API_KEY)
+groq_client = Groq(api_key=GROQ_API_KEY)
 
 mongo_client = AsyncIOMotorClient(MONGO_URL)
 db = mongo_client[DB_NAME]
@@ -86,7 +87,7 @@ class CampusAIAgent:
     async def classify_intent(self, message: str):
 
         system_prompt = """
-Classify the intent.
+Classify the user intent.
 
 Return ONLY JSON:
 
@@ -95,8 +96,8 @@ Return ONLY JSON:
 }
 """
 
-        completion = client_openai.chat.completions.create(
-            model="gpt-4o-mini",
+        completion = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
             temperature=0,
             messages=[
                 {"role": "system", "content": system_prompt},
@@ -106,8 +107,10 @@ Return ONLY JSON:
 
         text = completion.choices[0].message.content.strip()
 
+        # Extract JSON safely
         try:
-            return json.loads(text)["intent"]
+            json_match = re.search(r'\{.*\}', text, re.DOTALL)
+            return json.loads(json_match.group())["intent"]
         except:
             return "GENERAL"
 
@@ -122,9 +125,9 @@ Database Data:
 {json.dumps(data, indent=2) if data else "None"}
 """
 
-        completion = client_openai.chat.completions.create(
-            model="gpt-4o-mini",
-            temperature=0.7,
+        completion = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
+            temperature=0.4,
             messages=[
                 {"role": "system", "content": "You are a smart college campus assistant."},
                 {"role": "user", "content": context}
@@ -137,23 +140,19 @@ Database Data:
     # ---------- EVENTS ----------
     async def events(self):
 
-        events = await db.events.find(
+        return await db.events.find(
             {"status": "upcoming"},
             {"_id": 0}
         ).to_list(10)
-
-        return events
 
 
     # ---------- FACILITIES ----------
     async def facilities(self):
 
-        facilities = await db.facilities.find(
+        return await db.facilities.find(
             {"status": "available"},
             {"_id": 0}
         ).to_list(10)
-
-        return facilities
 
 
     # ---------- BOOKING ----------
@@ -173,8 +172,8 @@ Return ONLY JSON:
 }
 """
 
-        completion = client_openai.chat.completions.create(
-            model="gpt-4o-mini",
+        completion = groq_client.chat.completions.create(
+            model="llama-3.1-8b-instant",
             temperature=0,
             messages=[
                 {"role": "system", "content": system},
@@ -182,7 +181,13 @@ Return ONLY JSON:
             ]
         )
 
-        data = json.loads(completion.choices[0].message.content)
+        text = completion.choices[0].message.content
+
+        try:
+            json_match = re.search(r'\{.*\}', text, re.DOTALL)
+            data = json.loads(json_match.group())
+        except:
+            return "Could not understand booking details."
 
         facility = await db.facilities.find_one(
             {"name": {"$regex": data["resource_name"], "$options": "i"}},
@@ -232,7 +237,6 @@ Return ONLY JSON:
             reply = f"✅ Booking Confirmed!\n\n{json.dumps(booking, indent=2)}"
 
         else:
-
             reply = await self.ai_response(message)
 
         return ChatResponse(
