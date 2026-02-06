@@ -336,8 +336,17 @@ Please type 'confirm' or 'yes' to proceed with this booking, or 'cancel' to canc
     async def validate_booking_request(self, entities: Dict, message: str) -> Dict:
         """Validate booking request and prepare booking data"""
         # Extract booking details using GPT-4o
-        system_message = """Extract booking details from the user message.
-Return JSON with: resource_name, date (YYYY-MM-DD), start_time (HH:MM), end_time (HH:MM), purpose"""
+        system_message = """Extract booking details from the user message and return ONLY valid JSON.
+Required format:
+{
+    "resource_name": "facility name",
+    "date": "YYYY-MM-DD",
+    "start_time": "HH:MM",
+    "end_time": "HH:MM",
+    "purpose": "purpose description"
+}
+
+Return ONLY the JSON object, no additional text or explanation."""
         
         chat = LlmChat(
             api_key=self.api_key,
@@ -349,7 +358,15 @@ Return JSON with: resource_name, date (YYYY-MM-DD), start_time (HH:MM), end_time
         response = await chat.send_message(user_message)
         
         try:
-            booking_data = json.loads(response)
+            # Try to extract JSON from response
+            response_text = response.strip()
+            # Remove markdown code blocks if present
+            if response_text.startswith("```json"):
+                response_text = response_text.split("```json")[1].split("```")[0].strip()
+            elif response_text.startswith("```"):
+                response_text = response_text.split("```")[1].split("```")[0].strip()
+            
+            booking_data = json.loads(response_text)
             
             # Validate constraints
             if not booking_data.get("date") or not booking_data.get("start_time"):
