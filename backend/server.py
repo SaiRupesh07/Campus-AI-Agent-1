@@ -425,9 +425,10 @@ Return ONLY the JSON object, no additional text or explanation."""
         booking.confirmed_at = datetime.now(timezone.utc).isoformat()
         
         doc = booking.model_dump()
-        await db.bookings.insert_one(doc)
+        result = await db.bookings.insert_one(doc)
         
-        return doc
+        # Return the document without MongoDB's _id
+        return {k: v for k, v in doc.items() if k != '_id'}
 
 # Initialize agent
 agent = CampusAIAgent()
