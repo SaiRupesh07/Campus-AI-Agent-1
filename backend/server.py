@@ -23,7 +23,6 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
-
 MODEL = "llama-3.3-70b-versatile"
 
 app = FastAPI(title="College Campus AI Agent API")
@@ -69,17 +68,13 @@ class ChatResponse(BaseModel):
 
 class CampusAIAgent:
 
-    # ⭐ TOOL DEFINITIONS
     TOOLS = [
         {
             "type": "function",
             "function": {
                 "name": "get_events",
                 "description": "Fetch upcoming campus events",
-                "parameters": {
-                    "type": "object",
-                    "properties": {}
-                }
+                "parameters": {"type": "object", "properties": {}}
             }
         },
         {
@@ -87,10 +82,7 @@ class CampusAIAgent:
             "function": {
                 "name": "get_facilities",
                 "description": "Fetch available campus facilities",
-                "parameters": {
-                    "type": "object",
-                    "properties": {}
-                }
+                "parameters": {"type": "object", "properties": {}}
             }
         }
     ]
@@ -109,18 +101,22 @@ class CampusAIAgent:
 
         return completion.choices[0].message
 
-    # SESSION
+    # ================= SESSION =================
+
     def get_or_create_session(self, session_id):
 
         if not session_id or session_id not in sessions:
             session_id = str(uuid.uuid4())
+
+            # ✅ MEMORY ADDED
             sessions[session_id] = {
-                "pending_confirmation": None
+                "pending_confirmation": None,
+                "history": []
             }
 
         return session_id, sessions[session_id]
 
-    # ================= DATABASE HANDLERS =================
+    # ================= DATABASE =================
 
     async def get_events(self):
         return await db.events.find(
@@ -142,7 +138,6 @@ class CampusAIAgent:
 Extract booking details.
 
 Return ONLY JSON:
-
 {
 "resource_name":"",
 "date":"",
@@ -158,7 +153,7 @@ Return ONLY JSON:
         ]
 
         try:
-            raw = self.call_llm(messages).content
+            raw = self.call_llm(messages).content or ""
             raw = raw.replace("```json", "").replace("```", "").strip()
 
             booking_data = json.loads(raw)
@@ -198,6 +193,8 @@ Return ONLY JSON:
 
         session_id, session = self.get_or_create_session(session_id)
 
+        history = session["history"]
+
         # 🔥 Confirmation Flow
         if session.get("pending_confirmation"):
 
@@ -205,8 +202,12 @@ Return ONLY JSON:
                 result = await self.execute_booking(session["pending_confirmation"])
                 session["pending_confirmation"] = None
 
+                reply = "✅ Booking Confirmed!"
+
+                history.append({"role": "assistant", "content": reply})
+
                 return ChatResponse(
-                    response="✅ Booking Confirmed!",
+                    response=reply,
                     session_id=session_id,
                     intent="BOOKING_CONFIRMED",
                     data=result
@@ -215,37 +216,41 @@ Return ONLY JSON:
             elif message.lower() in ["no", "cancel"]:
                 session["pending_confirmation"] = None
 
+                reply = "Booking cancelled 👍"
+
+                history.append({"role": "assistant", "content": reply})
+
                 return ChatResponse(
-                    response="Booking cancelled 👍",
+                    response=reply,
                     session_id=session_id
                 )
 
-        # ⭐ AGENT SYSTEM PROMPT
+        # ⭐ MEMORY ENABLED PROMPT
         messages = [
             {
                 "role": "system",
                 "content": """
-You are an AI assistant for a college campus.
+You are a smart AI assistant for a college campus.
 
-Use tools when needed:
+Remember previous conversation context.
+Resolve references like:
+- "book it"
+- "that lab"
+- "tomorrow"
 
-- get_events → when user asks about events
-- get_facilities → when user asks about labs, rooms, facilities
-
-For booking requests:
-Ask the user for date, time, and facility name.
+Use tools when needed.
 Do NOT hallucinate data.
 """
-            },
-            {
-                "role": "user",
-                "content": message
             }
         ]
 
+        messages.extend(history)
+
+        messages.append({"role": "user", "content": message})
+
         response = self.call_llm(messages, tools=self.TOOLS)
 
-        # 🔥 TOOL CALL DETECTED
+        # 🔥 TOOL CALL
         if response.tool_calls:
 
             tool_name = response.tool_calls[0].function.name
@@ -259,7 +264,6 @@ Do NOT hallucinate data.
             else:
                 data = {}
 
-            # Send tool result back
             messages.append(response)
 
             messages.append({
@@ -270,7 +274,15 @@ Do NOT hallucinate data.
 
             final = self.call_llm(messages)
 
-            reply = final.content
+            reply = final.content or "Here is what I found."
+
+            # ✅ SAVE MEMORY
+            history.append({"role": "user", "content": message})
+            history.append({"role": "assistant", "content": reply})
+
+            if len(history) > 12:
+                history.pop(0)
+                history.pop(0)
 
             return ChatResponse(
                 response=reply,
@@ -281,32 +293,45 @@ Do NOT hallucinate data.
 
         # 🔥 Booking fallback
         if "book" in message.lower():
+
             validation = await self.validate_booking_request(message)
 
             if validation["valid"]:
                 session["pending_confirmation"] = validation["booking_data"]
 
-                return ChatResponse(
-                    response=f"""
+                reply = f"""
 I can help you book this facility:
 
 {json.dumps(validation["booking_data"], indent=2)}
 
 Type YES to confirm.
-""",
+"""
+
+                history.append({"role": "user", "content": message})
+                history.append({"role": "assistant", "content": reply})
+
+                return ChatResponse(
+                    response=reply,
                     session_id=session_id,
                     intent="BOOKING_REQUEST",
                     requires_confirmation=True
                 )
             else:
-                return ChatResponse(
-                    response=validation["message"],
-                    session_id=session_id
-                )
+                reply = validation["message"]
 
-        # Normal reply
+        else:
+            reply = response.content or "How can I assist you?"
+
+        # ✅ SAVE MEMORY
+        history.append({"role": "user", "content": message})
+        history.append({"role": "assistant", "content": reply})
+
+        if len(history) > 12:
+            history.pop(0)
+            history.pop(0)
+
         return ChatResponse(
-            response=response.content,
+            response=reply,
             session_id=session_id,
             intent="GENERAL"
         )
