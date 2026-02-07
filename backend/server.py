@@ -68,30 +68,27 @@ class ChatResponse(BaseModel):
 
 class CampusAIAgent:
 
-    # ✅ TOOL DEFINITIONS (UPGRADED)
+    # ✅ TOOL DEFINITIONS
     TOOLS = [
         {
             "type": "function",
             "function": {
                 "name": "get_events",
                 "description": "Fetch upcoming campus events",
-                "parameters": {
-                    "type": "object",
-                    "properties": {}
-                }
+                "parameters": {"type": "object", "properties": {}}
             }
         },
         {
             "type": "function",
             "function": {
                 "name": "get_facilities",
-                "description": "Fetch available campus facilities. Use facility_type when user specifies labs, classrooms, auditoriums, sports, etc.",
+                "description": "Fetch campus facilities. ALWAYS pass facility_type if user mentions labs, classrooms, auditoriums, sports etc.",
                 "parameters": {
                     "type": "object",
                     "properties": {
                         "facility_type": {
                             "type": "string",
-                            "description": "Type of facility such as lab, classroom, auditorium, sports"
+                            "description": "Facility type like lab, classroom, auditorium, sports"
                         }
                     }
                 }
@@ -142,10 +139,9 @@ class CampusAIAgent:
 
         if facility_type:
             query["type"] = {
-    "$regex": f".*{facility_type}.*",
-    "$options": "i"
-}
-
+                "$regex": facility_type,
+                "$options": "i"
+            }
 
         return await db.facilities.find(
             query,
@@ -177,6 +173,7 @@ Return ONLY JSON:
         try:
             raw = self.call_llm(messages).content or ""
             raw = raw.replace("```json", "").replace("```", "").strip()
+
             booking_data = json.loads(raw)
 
         except:
@@ -215,19 +212,15 @@ Return ONLY JSON:
         session_id, session = self.get_or_create_session(session_id)
         history = session["history"]
 
-        # ✅ Confirmation flow
+        # ✅ Confirmation Flow
         if session.get("pending_confirmation"):
 
             if message.lower() in ["yes", "confirm", "ok"]:
                 result = await self.execute_booking(session["pending_confirmation"])
                 session["pending_confirmation"] = None
 
-                reply = "✅ Booking Confirmed!"
-
-                history.append({"role": "assistant", "content": reply})
-
                 return ChatResponse(
-                    response=reply,
+                    response="✅ Booking Confirmed!",
                     session_id=session_id,
                     intent="BOOKING_CONFIRMED",
                     data=result
@@ -236,40 +229,34 @@ Return ONLY JSON:
             elif message.lower() in ["no", "cancel"]:
                 session["pending_confirmation"] = None
 
-                reply = "Booking cancelled 👍"
-
-                history.append({"role": "assistant", "content": reply})
-
                 return ChatResponse(
-                    response=reply,
+                    response="Booking cancelled 👍",
                     session_id=session_id
                 )
 
-        # ✅ SYSTEM PROMPT WITH MEMORY
+        # ✅ SYSTEM PROMPT (UPGRADED)
+
         messages = [
             {
                 "role": "system",
                 "content": """
 You are a smart AI assistant for a college campus.
 
-Remember conversation context.
-Resolve references like:
-- "book it"
-- "that lab"
-- "tomorrow"
+IMPORTANT:
+When calling get_facilities, ALWAYS pass facility_type if user mentions labs, classrooms, sports, etc.
 
-Use tools when needed.
-Do NOT hallucinate data.
+Use tools whenever possible.
+Do NOT hallucinate.
 """
             }
         ]
 
-        messages.extend(history)
+        messages.extend(history[-8:])  # memory trim
         messages.append({"role": "user", "content": message})
 
         response = self.call_llm(messages, tools=self.TOOLS)
 
-        # ✅ TOOL CALL DETECTED
+        # ✅ TOOL CALL
         if response.tool_calls:
 
             tool_call = response.tool_calls[0]
@@ -280,14 +267,13 @@ Do NOT hallucinate data.
                 try:
                     args = json.loads(tool_call.function.arguments)
                 except:
-                    args = {}
+                    pass
 
             if tool_name == "get_events":
                 data = await self.get_events()
 
             elif tool_name == "get_facilities":
-                facility_type = args.get("facility_type")
-                data = await self.get_facilities(facility_type)
+                data = await self.get_facilities(args.get("facility_type"))
 
             else:
                 data = {}
@@ -303,13 +289,10 @@ Do NOT hallucinate data.
             final = self.call_llm(messages)
             reply = final.content or "Here is what I found."
 
-            # save memory
-            history.append({"role": "user", "content": message})
-            history.append({"role": "assistant", "content": reply})
-
-            if len(history) > 12:
-                history.pop(0)
-                history.pop(0)
+            history.extend([
+                {"role": "user", "content": message},
+                {"role": "assistant", "content": reply}
+            ])
 
             return ChatResponse(
                 response=reply,
@@ -318,46 +301,8 @@ Do NOT hallucinate data.
                 data=data
             )
 
-        # ✅ Booking fallback
-        if "book" in message.lower():
-
-            validation = await self.validate_booking_request(message)
-
-            if validation["valid"]:
-                session["pending_confirmation"] = validation["booking_data"]
-
-                reply = f"""
-I can help you book this facility:
-
-{json.dumps(validation["booking_data"], indent=2)}
-
-Type YES to confirm.
-"""
-
-                history.append({"role": "user", "content": message})
-                history.append({"role": "assistant", "content": reply})
-
-                return ChatResponse(
-                    response=reply,
-                    session_id=session_id,
-                    intent="BOOKING_REQUEST",
-                    requires_confirmation=True
-                )
-            else:
-                reply = validation["message"]
-
-        else:
-            reply = response.content or "How can I assist you?"
-
-        history.append({"role": "user", "content": message})
-        history.append({"role": "assistant", "content": reply})
-
-        if len(history) > 12:
-            history.pop(0)
-            history.pop(0)
-
         return ChatResponse(
-            response=reply,
+            response=response.content or "How can I assist you?",
             session_id=session_id,
             intent="GENERAL"
         )
