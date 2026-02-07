@@ -141,7 +141,11 @@ class CampusAIAgent:
         query = {"status": "available"}
 
         if facility_type:
-            query["type"] = {"$regex": facility_type, "$options": "i"}
+            query["type"] = {
+    "$regex": f".*{facility_type}.*",
+    "$options": "i"
+}
+
 
         return await db.facilities.find(
             query,
