@@ -6,11 +6,12 @@ import os
 import logging
 from pathlib import Path
 from pydantic import BaseModel, Field, ConfigDict
-from typing import List, Optional, Dict, Any
+from typing import Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone
 import json
 from groq import Groq
+
 
 # ================= ENV =================
 
@@ -22,6 +23,7 @@ client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
 groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
+
 MODEL = "llama-3.3-70b-versatile"
 
 app = FastAPI(title="College Campus AI Agent API")
@@ -67,19 +69,45 @@ class ChatResponse(BaseModel):
 
 class CampusAIAgent:
 
-    # 🔥 UNIVERSAL LLM CALL
-    def call_llm(self, system_prompt, user_prompt):
+    # ⭐ TOOL DEFINITIONS
+    TOOLS = [
+        {
+            "type": "function",
+            "function": {
+                "name": "get_events",
+                "description": "Fetch upcoming campus events",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        },
+        {
+            "type": "function",
+            "function": {
+                "name": "get_facilities",
+                "description": "Fetch available campus facilities",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
+            }
+        }
+    ]
+
+    # ⭐ UNIVERSAL LLM CALL
+    def call_llm(self, messages, tools=None):
 
         completion = groq_client.chat.completions.create(
             model=MODEL,
-            temperature=0.3,
-            messages=[
-                {"role": "system", "content": system_prompt},
-                {"role": "user", "content": user_prompt}
-            ]
+            messages=messages,
+            tools=tools,
+            tool_choice="auto",
+            temperature=0.2,
+            max_tokens=800
         )
 
-        return completion.choices[0].message.content.strip()
+        return completion.choices[0].message
 
     # SESSION
     def get_or_create_session(self, session_id):
@@ -92,62 +120,22 @@ class CampusAIAgent:
 
         return session_id, sessions[session_id]
 
-    # 🔥 INTENT ROUTER (Bulletproof)
-    async def llm_router(self, message: str):
+    # ================= DATABASE HANDLERS =================
 
-        system = """
-Decide the user intent.
-
-Return ONLY one word:
-
-EVENTS_QUERY
-FACILITY_QUERY
-BOOKING_REQUEST
-GENERAL
-"""
-
-        intent = self.call_llm(system, message)
-
-        intent = intent.strip().upper().replace(".", "")
-
-        allowed = [
-            "EVENTS_QUERY",
-            "FACILITY_QUERY",
-            "BOOKING_REQUEST",
-            "GENERAL"
-        ]
-
-        return intent if intent in allowed else "GENERAL"
-
-    # RESPONSE
-    async def generate_response(self, intent, data, message):
-
-        system = """You are a helpful college campus assistant.
-Keep responses friendly, structured, and professional."""
-
-        context = f"""
-User asked: {message}
-Intent: {intent}
-Data: {json.dumps(data, indent=2) if data else "None"}
-"""
-
-        return self.call_llm(system, context)
-
-    # EVENTS
-    async def handle_events_query(self):
+    async def get_events(self):
         return await db.events.find(
             {"status": "upcoming"},
             {"_id": 0}
         ).limit(10).to_list(10)
 
-    # FACILITIES
-    async def handle_facility_query(self):
+    async def get_facilities(self):
         return await db.facilities.find(
             {"status": "available"},
             {"_id": 0}
         ).limit(10).to_list(10)
 
-    # BOOKING VALIDATION
+    # ================= BOOKING =================
+
     async def validate_booking_request(self, message):
 
         system = """
@@ -164,9 +152,13 @@ Return ONLY JSON:
 }
 """
 
-        try:
-            raw = self.call_llm(system, message)
+        messages = [
+            {"role": "system", "content": system},
+            {"role": "user", "content": message}
+        ]
 
+        try:
+            raw = self.call_llm(messages).content
             raw = raw.replace("```json", "").replace("```", "").strip()
 
             booking_data = json.loads(raw)
@@ -189,7 +181,6 @@ Return ONLY JSON:
 
         return {"valid": True, "booking_data": booking_data}
 
-    # EXECUTE BOOKING
     async def execute_booking(self, booking_data):
 
         booking = Booking(**booking_data)
@@ -201,12 +192,13 @@ Return ONLY JSON:
 
         return {k: v for k, v in doc.items() if k != "_id"}
 
-    # 🔥 MAIN AGENT LOOP
+    # ================= AGENT LOOP =================
+
     async def handle_message(self, message, session_id):
 
         session_id, session = self.get_or_create_session(session_id)
 
-        # Confirmation flow
+        # 🔥 Confirmation Flow
         if session.get("pending_confirmation"):
 
             if message.lower() in ["yes", "confirm", "ok"]:
@@ -228,44 +220,95 @@ Return ONLY JSON:
                     session_id=session_id
                 )
 
-        # ROUTE
-        intent = await self.llm_router(message)
+        # ⭐ AGENT SYSTEM PROMPT
+        messages = [
+            {
+                "role": "system",
+                "content": """
+You are an AI assistant for a college campus.
 
-        if intent == "EVENTS_QUERY":
+Use tools when needed:
 
-            data = await self.handle_events_query()
-            reply = await self.generate_response(intent, data, message)
+- get_events → when user asks about events
+- get_facilities → when user asks about labs, rooms, facilities
 
-        elif intent == "FACILITY_QUERY":
+For booking requests:
+Ask the user for date, time, and facility name.
+Do NOT hallucinate data.
+"""
+            },
+            {
+                "role": "user",
+                "content": message
+            }
+        ]
 
-            data = await self.handle_facility_query()
-            reply = await self.generate_response(intent, data, message)
+        response = self.call_llm(messages, tools=self.TOOLS)
 
-        elif intent == "BOOKING_REQUEST":
+        # 🔥 TOOL CALL DETECTED
+        if response.tool_calls:
 
+            tool_name = response.tool_calls[0].function.name
+
+            if tool_name == "get_events":
+                data = await self.get_events()
+
+            elif tool_name == "get_facilities":
+                data = await self.get_facilities()
+
+            else:
+                data = {}
+
+            # Send tool result back
+            messages.append(response)
+
+            messages.append({
+                "role": "tool",
+                "tool_call_id": response.tool_calls[0].id,
+                "content": json.dumps(data)
+            })
+
+            final = self.call_llm(messages)
+
+            reply = final.content
+
+            return ChatResponse(
+                response=reply,
+                session_id=session_id,
+                intent=tool_name,
+                data=data
+            )
+
+        # 🔥 Booking fallback
+        if "book" in message.lower():
             validation = await self.validate_booking_request(message)
 
             if validation["valid"]:
                 session["pending_confirmation"] = validation["booking_data"]
 
-                reply = f"""
+                return ChatResponse(
+                    response=f"""
 I can help you book this facility:
 
 {json.dumps(validation["booking_data"], indent=2)}
 
 Type YES to confirm.
-"""
+""",
+                    session_id=session_id,
+                    intent="BOOKING_REQUEST",
+                    requires_confirmation=True
+                )
             else:
-                reply = validation["message"]
+                return ChatResponse(
+                    response=validation["message"],
+                    session_id=session_id
+                )
 
-        else:
-
-            reply = await self.generate_response(intent, None, message)
-
+        # Normal reply
         return ChatResponse(
-            response=reply,
+            response=response.content,
             session_id=session_id,
-            intent=intent
+            intent="GENERAL"
         )
 
 
