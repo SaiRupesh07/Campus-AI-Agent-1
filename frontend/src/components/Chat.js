@@ -4,7 +4,9 @@ import { Send, Bot, User, Loader2, Sparkles, Calendar, Building2, BookOpen } fro
 import { Button } from './ui/button';
 import { cn } from '../lib/utils';
 
-const API_URL = process.env.REACT_APP_BACKEND_URL;
+// ✅ SAFE API URL (works in local + production)
+const API_URL =
+  process.env.REACT_APP_BACKEND_URL || "http://localhost:8000";
 
 const containerVariants = {
   hidden: { opacity: 0 },
@@ -19,16 +21,19 @@ const messageVariants = {
 function TypingIndicator() {
   return (
     <div className="flex gap-1.5 p-4 bg-muted/30 rounded-2xl w-fit">
-      <span className="w-2 h-2 rounded-full bg-muted-foreground/50 typing-dot" />
-      <span className="w-2 h-2 rounded-full bg-muted-foreground/50 typing-dot" />
-      <span className="w-2 h-2 rounded-full bg-muted-foreground/50 typing-dot" />
+      <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce" />
+      <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce delay-150" />
+      <span className="w-2 h-2 rounded-full bg-muted-foreground/50 animate-bounce delay-300" />
     </div>
   );
 }
 
 function ChatMessage({ message, isUser }) {
-  const time = new Date(message.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  
+  const time = new Date(message.timestamp).toLocaleTimeString([], {
+    hour: '2-digit',
+    minute: '2-digit'
+  });
+
   return (
     <motion.div
       variants={messageVariants}
@@ -42,11 +47,12 @@ function ChatMessage({ message, isUser }) {
       )}>
         {isUser ? <User className="w-5 h-5" /> : <Bot className="w-5 h-5" />}
       </div>
+
       <div className={cn("flex flex-col gap-1", isUser && "items-end")}>
         <div className={cn(
           "px-4 py-3 rounded-2xl whitespace-pre-wrap leading-relaxed",
-          isUser 
-            ? "bg-primary text-primary-foreground rounded-tr-sm" 
+          isUser
+            ? "bg-primary text-primary-foreground rounded-tr-sm"
             : "bg-muted/50 border border-border/50 rounded-tl-sm"
         )}>
           {message.content}
@@ -64,7 +70,6 @@ function QuickAction({ icon: Icon, text, onClick }) {
       whileTap={{ scale: 0.98 }}
       onClick={onClick}
       className="flex items-center gap-2 px-4 py-2.5 rounded-full bg-muted/50 hover:bg-muted border border-border/50 hover:border-primary/30 transition-all text-sm font-medium"
-      data-testid={`chat-quick-action-${text.toLowerCase().replace(/ /g, '-')}`}
     >
       <Icon className="w-4 h-4 text-primary" />
       <span>{text}</span>
@@ -83,20 +88,20 @@ export function Chat() {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
   };
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages]);
+  useEffect(scrollToBottom, [messages]);
 
   useEffect(() => {
     setMessages([{
       type: 'bot',
-      content: "Hello! I'm your Campus AI Assistant. I can help you with:\n\n• Finding and booking facilities\n• Discovering upcoming events\n• Answering campus questions\n\nHow can I assist you today?",
+      content:
+        "Hello! I'm your Campus AI Assistant.\n\n• Find facilities\n• Discover events\n• Book rooms\n\nHow can I help you today?",
       timestamp: new Date()
     }]);
   }, []);
 
   const sendMessage = async (text) => {
     const messageText = text || input;
+
     if (!messageText.trim() || loading) return;
 
     const userMessage = {
@@ -110,32 +115,49 @@ export function Chat() {
     setLoading(true);
 
     try {
+      console.log("Connecting to:", API_URL);
+
       const response = await fetch(`${API_URL}/api/chat`, {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ message: messageText, session_id: sessionId })
+        headers: {
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          message: messageText,
+          session_id: sessionId
+        })
       });
 
+      if (!response.ok) {
+        throw new Error(`Server Error: ${response.status}`);
+      }
+
       const data = await response.json();
-      
-      if (!sessionId) setSessionId(data.session_id);
+
+      console.log("Backend response:", data);
+
+      if (!sessionId && data.session_id) {
+        setSessionId(data.session_id);
+      }
 
       const botMessage = {
         type: 'bot',
-        content: data.response,
+        content: data.response || "No response from assistant.",
         timestamp: new Date(),
-        intent: data.intent,
-        data: data.data
       };
 
       setMessages(prev => [...prev, botMessage]);
+
     } catch (error) {
-      console.error('Error sending message:', error);
+      console.error("Backend connection failed:", error);
+
       setMessages(prev => [...prev, {
         type: 'bot',
-        content: 'Sorry, I encountered an error. Please try again.',
+        content:
+          "⚠️ Cannot connect to the AI server.\n\nCheck:\n• Backend is running\n• CORS enabled\n• Correct Render URL",
         timestamp: new Date()
       }]);
+
     } finally {
       setLoading(false);
     }
@@ -151,74 +173,73 @@ export function Chat() {
       variants={containerVariants}
       initial="hidden"
       animate="show"
-      className="flex flex-col h-[calc(100vh-4rem)] md:h-screen"
-      data-testid="chat-page"
+      className="flex flex-col h-screen"
     >
       {/* Header */}
-      <div className="p-4 md:p-6 border-b bg-background/80 backdrop-blur-lg">
+      <div className="p-4 border-b bg-background/80 backdrop-blur-lg">
         <div className="flex items-center gap-3">
           <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-primary text-primary-foreground">
             <Sparkles className="w-5 h-5" />
           </div>
           <div>
-            <h1 className="text-xl font-bold">AI Assistant</h1>
-            <p className="text-sm text-muted-foreground">Ask me anything about campus</p>
+            <h1 className="text-xl font-bold">Campus AI Assistant</h1>
+            <p className="text-sm text-muted-foreground">
+              Ask anything about your campus
+            </p>
           </div>
         </div>
       </div>
 
       {/* Messages */}
-      <div className="flex-1 overflow-y-auto p-4 md:p-6 space-y-6" data-testid="chat-messages">
-        <AnimatePresence mode="popLayout">
+      <div className="flex-1 overflow-y-auto p-4 space-y-6">
+        <AnimatePresence>
           {messages.map((msg, index) => (
             <ChatMessage key={index} message={msg} isUser={msg.type === 'user'} />
           ))}
         </AnimatePresence>
-        
+
         {loading && (
-          <motion.div
-            initial={{ opacity: 0, y: 10 }}
-            animate={{ opacity: 1, y: 0 }}
-            className="flex gap-3 mr-auto"
-          >
-            <div className="flex items-center justify-center w-9 h-9 rounded-full bg-primary text-primary-foreground flex-shrink-0">
+          <div className="flex gap-3">
+            <div className="flex items-center justify-center w-9 h-9 rounded-full bg-primary text-primary-foreground">
               <Bot className="w-5 h-5" />
             </div>
             <TypingIndicator />
-          </motion.div>
+          </div>
         )}
+
         <div ref={messagesEndRef} />
       </div>
 
       {/* Quick Actions */}
-      <div className="px-4 py-3 border-t bg-muted/20 overflow-x-auto">
-        <div className="flex gap-2">
-          <QuickAction icon={Calendar} text="Show events" onClick={() => sendMessage('What events are happening?')} />
-          <QuickAction icon={Building2} text="Find facilities" onClick={() => sendMessage('Show me available facilities')} />
-          <QuickAction icon={BookOpen} text="Book a room" onClick={() => sendMessage('I want to book a room')} />
-        </div>
+      <div className="px-4 py-3 border-t bg-muted/20 flex gap-2 overflow-x-auto">
+        <QuickAction icon={Calendar} text="Show events"
+          onClick={() => sendMessage('What events are happening?')} />
+        <QuickAction icon={Building2} text="Find facilities"
+          onClick={() => sendMessage('Show available facilities')} />
+        <QuickAction icon={BookOpen} text="Book a room"
+          onClick={() => sendMessage('I want to book a room')} />
       </div>
 
-      {/* Input Area */}
-      <form onSubmit={handleSubmit} className="p-4 pb-16 md:pb-4 border-t bg-background/80 backdrop-blur-lg relative z-50">
-        <div className="flex gap-3 items-center">
+      {/* Input */}
+      <form onSubmit={handleSubmit} className="p-4 border-t bg-background">
+        <div className="flex gap-3">
           <input
-            type="text"
             value={input}
             onChange={(e) => setInput(e.target.value)}
             placeholder="Type your message..."
             disabled={loading}
-            className="flex-1 px-4 py-3 rounded-full bg-muted/50 border border-border focus:border-primary focus:ring-2 focus:ring-primary/20 outline-none transition-all placeholder:text-muted-foreground disabled:opacity-50"
-            data-testid="chat-input"
+            className="flex-1 px-4 py-3 rounded-full bg-muted border border-border focus:border-primary outline-none"
           />
+
           <Button
             type="submit"
             size="icon"
             disabled={loading || !input.trim()}
-            className="w-12 h-12 rounded-full shadow-lg glow-primary"
-            data-testid="chat-send-button"
+            className="w-12 h-12 rounded-full"
           >
-            {loading ? <Loader2 className="w-5 h-5 animate-spin" /> : <Send className="w-5 h-5" />}
+            {loading
+              ? <Loader2 className="w-5 h-5 animate-spin" />
+              : <Send className="w-5 h-5" />}
           </Button>
         </div>
       </form>
