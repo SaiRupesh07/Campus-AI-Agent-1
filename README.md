@@ -308,8 +308,8 @@ This project is licensed under the MIT License - see the [LICENSE](LICENSE) file
 
 Building production-grade AI systems focused on real-world automation.
 
-- GitHub: [@your-github-username](https://github.com/SaiRupesh07)
-- LinkedIn: [Your LinkedIn](https://www.linkedin.com/in/sai-rupesh-devarinti/)
+- GitHub: [Profile](https://github.com/SaiRupesh07)
+- LinkedIn: [Profile](https://www.linkedin.com/in/sai-rupesh-devarinti/)
 - Email: devarintisairupesh840@gmail.com
 
 ---
