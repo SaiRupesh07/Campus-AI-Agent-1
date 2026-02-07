@@ -1,77 +1,89 @@
-# College Campus AI Agent 🎓🤖
+#  Campus AI Agent 🎓🤖
 
 [![Python](https://img.shields.io/badge/Python-3.11-blue.svg)](https://www.python.org/)
-[![FastAPI](https://img.shields.io/badge/FastAPI-0.110.1-green.svg)](https://fastapi.tiangolo.com/)
-[![React](https://img.shields.io/badge/React-19.0.0-blue.svg)](https://reactjs.org/)
-[![OpenAI](https://img.shields.io/badge/OpenAI-GPT--4o-black.svg)](https://openai.com/)
+[![FastAPI](https://img.shields.io/badge/FastAPI-Production-green.svg)](https://fastapi.tiangolo.com/)
+[![React](https://img.shields.io/badge/React-Modern-blue.svg)](https://reactjs.org/)
+[![Groq](https://img.shields.io/badge/Groq-LLM-orange.svg)](https://groq.com/)
+[![MongoDB](https://img.shields.io/badge/MongoDB-Database-green.svg)](https://mongodb.com/)
 
-An intelligent AI agent for college campus management that provides information on events, facilities, and handles booking requests with natural language understanding.
+> 🚀 **Live AI-powered campus assistant that understands natural language, retrieves data across systems, and executes real-world booking workflows.**
+
+---
+
+## 🌐 Live Deployment
+
+### 🔥 Try the App Now
+
+- **Frontend:** [https://YOUR-VERCEL-LINK.vercel.app](https://campus-ai-agent-1.vercel.app/)
+- **Backend API:** [https://YOUR-RENDER-LINK.onrender.com](https://campus-ai-agent.onrender.com/)
+- **Swagger Docs:** [https://YOUR-RENDER-LINK.onrender.com/docs](https://campus-ai-agent.onrender.com//docs)
+
+*(Replace with your actual deployment links)*
+
+---
 
 ## 🎯 Project Overview
 
-This project implements a complete AI-powered assistant for college campuses that:
+The **College Campus AI Agent** is a production-style intelligent assistant designed to automate campus operations using Large Language Models. It enables students and faculty to interact with campus systems using simple conversational language.
 
-- **Understands Natural Language**: Uses OpenAI GPT-4o for intent detection and response generation
-- **Manages Events**: Provides information about upcoming campus events, seminars, and workshops
-- **Handles Facilities**: Shows available rooms, labs, and campus facilities
-- **Processes Bookings**: Validates and confirms facility bookings with explicit user confirmation
-- **Validates Constraints**: Checks availability, operational hours, and prevents double bookings
+### ✅ Core Capabilities
 
-## 📋 Assignment Requirements Fulfilled
+- 🧠 **Natural Language Understanding** — Powered by Groq Llama-3 for ultra-fast inference
+- 📅 **Event Discovery** — Fetch upcoming seminars, workshops, and fests
+- 🏢 **Facility Intelligence** — Search labs, classrooms, and auditoriums
+- 📌 **Smart Booking Engine** — Validate availability before confirming reservations
+- 🔒 **Constraint Enforcement** — Prevent double bookings & invalid time slots
+- 💬 **Session-Based Conversations** — Maintains booking context during chat
 
-### ✅ Functional Requirements
+---
 
-1. **Intent Identification**: AI agent identifies whether requests relate to:
-   - Events information
-   - Facilities queries
-   - Booking requests
-   - General campus information
+## 🧠 Why This Project Stands Out
 
-2. **Multi-System Data Retrieval**: 
-   - Retrieves event data from events database
-   - Fetches facility information from facilities database
-   - Manages bookings in separate booking system
+Unlike basic chatbots, this system behaves like a **true AI agent**:
 
-3. **Availability & Constraint Checking**:
-   - Validates operational hours for facilities
-   - Checks for conflicting bookings
-   - Verifies capacity constraints
-   - Ensures date/time validity
+✅ Routes queries to the correct internal system  
+✅ Makes decisions based on constraints  
+✅ Requests confirmation before executing actions  
+✅ Retrieves real-time database results  
+✅ Generates structured human-like responses  
 
-4. **User Confirmation**:
-   - Requires explicit confirmation before creating bookings
-   - Displays booking details for user review
-   - Allows cancellation before confirmation
+👉 This mirrors how **modern enterprise AI assistants** are built.
 
-### ✅ Expected Agent Behavior
-
-1. **System Routing**: Agent decides which internal system to consult based on intent
-2. **Constraint Validation**: Determines when availability checks are required
-3. **Confirmation Management**: Decides when explicit user confirmation is mandatory
+---
 
 ## 🏗️ Architecture
 
-See `ARCHITECTURE.md` for detailed architecture documentation.
+See **ARCHITECTURE.md** for detailed system design and decision flow.
 
-## 🛠️ Technology Stack & Justification
+### High-Level Flow
+
+```
+User → AI Agent → Intent Detection → Tool Execution → Constraint Validation → Response
+```
+
+---
+
+## 🛠️ Technology Stack
 
 ### Backend
 
-| Technology | Version | Justification |
-|------------|---------|---------------|
-| **FastAPI** | 0.110.1 | High-performance async Python framework |
-| **OpenAI GPT-4o** | Latest | Best-in-class natural language understanding |
-| **MongoDB** | 4.5.0 | Flexible schema for dynamic data models |
-| **Motor** | 3.3.1 | Async MongoDB driver |
-| **Emergentintegrations** | 0.1.0 | Unified LLM API interface |
+| Technology | Purpose |
+|------------|---------|
+| **FastAPI** | High-performance async APIs |
+| **Groq (Llama-3)** | Lightning-fast LLM inference |
+| **MongoDB** | Flexible NoSQL database |
+| **Motor** | Async DB driver |
+| **Pydantic** | Data validation |
 
 ### Frontend
 
-| Technology | Version | Justification |
-|------------|---------|---------------|
-| **React** | 19.0.0 | Modern UI framework |
-| **Tailwind CSS** | 3.4.17 | Utility-first CSS |
-| **Radix UI** | Latest | Accessible components |
+| Technology | Purpose |
+|------------|---------|
+| **React** | Interactive UI |
+| **Tailwind CSS** | Modern styling |
+| **Radix UI** | Accessible components |
+
+---
 
 ## 🚀 Setup Instructions
 
@@ -79,23 +91,53 @@ See `ARCHITECTURE.md` for detailed architecture documentation.
 
 - Python 3.11+
 - Node.js 18+
-- MongoDB
-- Emergent LLM Key (provided in .env)
+- MongoDB Atlas account
+- Groq API Key
 
-### Quick Start
+### 🔧 Backend Setup
 
 ```bash
-# Start all services
-sudo supervisorctl restart all
+# Navigate to backend directory
+cd backend
 
-# Check status
-sudo supervisorctl status
+# Install dependencies
+pip install -r requirements.txt
 
-# Access the application
-# Frontend: http://localhost:3000
-# Backend API: http://localhost:8001
-# API Docs: http://localhost:8001/docs
+# Start the server
+uvicorn server:app --reload
 ```
+
+Backend runs on: `http://localhost:8000`  
+API Documentation: `http://localhost:8000/docs`
+
+### 💻 Frontend Setup
+
+```bash
+# Navigate to frontend directory
+cd frontend
+
+# Install dependencies
+npm install
+
+# Start the development server
+npm start
+```
+
+Frontend runs on: `http://localhost:3000`
+
+---
+
+## 🔑 Environment Variables
+
+Create a `.env` file inside the `backend` directory:
+
+```env
+MONGO_URL=your_mongodb_connection_string
+DB_NAME=campus_ai
+GROQ_API_KEY=your_groq_api_key
+```
+
+---
 
 ## 📊 Database Schema
 
@@ -104,11 +146,9 @@ sudo supervisorctl status
 ```json
 {
   "id": "uuid",
-  "name": "Tech Symposium 2026",
+  "name": "Tech Symposium",
   "event_type": "seminar",
   "date": "2026-03-15",
-  "start_time": "10:00",
-  "end_time": "16:00",
   "location": "Main Auditorium",
   "capacity": 200,
   "status": "upcoming"
@@ -122,9 +162,8 @@ sudo supervisorctl status
   "id": "uuid",
   "name": "Computer Lab 1",
   "type": "lab",
-  "building": "Engineering Block",
   "capacity": 50,
-  "features": ["computers", "projector", "AC"],
+  "features": ["computers", "projector"],
   "status": "available"
 }
 ```
@@ -134,14 +173,15 @@ sudo supervisorctl status
 ```json
 {
   "id": "uuid",
-  "user_name": "John Doe",
-  "resource_id": "facility-uuid",
+  "resource_name": "Computer Lab 1",
   "date": "2026-03-10",
   "start_time": "14:00",
   "end_time": "16:00",
   "status": "confirmed"
 }
 ```
+
+---
 
 ## 🔌 API Endpoints
 
@@ -152,83 +192,141 @@ POST /api/chat
 Content-Type: application/json
 
 {
-  "message": "What events are happening next week?",
-  "session_id": "optional-session-id"
+  "message": "Show me available labs"
 }
 ```
 
-### Other Endpoints
+### Other Routes
 
-- `GET /api/events` - List all events
-- `POST /api/events` - Create new event
-- `GET /api/facilities` - List all facilities
-- `POST /api/facilities` - Create new facility
-- `GET /api/bookings` - List all bookings
-- `POST /api/bookings` - Create booking
-- `GET /api/availability` - Check availability
+- `GET /api/events` - Retrieve all events
+- `POST /api/events` - Create a new event
+- `GET /api/facilities` - Retrieve all facilities
+- `POST /api/facilities` - Add a new facility
+- `GET /api/bookings` - Retrieve all bookings
+- `POST /api/bookings` - Create a new booking
+- `GET /api/availability` - Check resource availability
+
+---
 
 ## 🎯 Usage Examples
 
-### Example 1: Event Query
+### Event Query
 
 ```
-User: "What events are happening this month?"
-Agent: Lists all upcoming events with details
+User: What events are happening this week?
 ```
 
-### Example 2: Facility Query
+👉 Agent returns structured event list with details
+
+### Facility Search
 
 ```
-User: "Show me available computer labs"
-Agent: Shows all computer labs with capacity and features
+User: Show available computer labs
 ```
 
-### Example 3: Booking with Confirmation
+👉 Agent fetches real-time database results
+
+### Smart Booking
 
 ```
-User: "I want to book Computer Lab 1 for March 10 from 2 PM to 4 PM"
-Agent: Shows booking details and requests confirmation
-User: "confirm"
-Agent: Creates booking and provides confirmation
+User: Book Computer Lab 1 tomorrow from 2–4 PM
 ```
+
+Agent workflow:
+1. ✅ Extracts booking details
+2. ✅ Validates availability
+3. ✅ Requests confirmation
+4. ✅ Creates booking
+
+---
 
 ## 🧪 Testing
 
-### API Testing
+### API Test with cURL
 
 ```bash
-curl -X POST http://localhost:8001/api/chat \
+curl -X POST http://localhost:8000/api/chat \
   -H "Content-Type: application/json" \
-  -d '{"message": "What events are happening?"}'
+  -d '{"message":"What events are happening?"}'
 ```
 
-### UI Testing
-
-All interactive elements include `data-testid` attributes for automated testing.
+---
 
 ## 📚 Documentation
 
-- **ARCHITECTURE.md**: Detailed architecture and system design
-- **API Docs**: Auto-generated at `/docs` endpoint when backend is running
+- **Architecture Diagram** → See `ARCHITECTURE.md`
+- **API Documentation** → Available at `/docs` endpoint (Swagger UI)
 
-## 🎓 Assignment Submission Checklist
+---
 
-- ✅ Complete AI agent architecture designed
-- ✅ Flow diagram showing all decision points
-- ✅ Intent detection implemented (GPT-4o)
-- ✅ Data retrieval from multiple systems
-- ✅ Constraint validation engine
-- ✅ User confirmation flow
-- ✅ Response generation
-- ✅ Working implementation with UI
-- ✅ Framework justification documented
-- ✅ Sample data and demonstrations
-- ✅ Comprehensive documentation
+## 🎓 Engineering Highlights
 
-## 📝 License
+✅ Agent-style architecture  
+✅ Multi-system data retrieval  
+✅ Constraint-aware decision making  
+✅ Production deployment ready  
+✅ Async backend for performance  
+✅ Tool-based execution model  
 
-Created for educational purposes as part of an AI/ML assignment.
+👉 This project reflects **real-world AI system design principles**
+
+---
+
+## 🔮 Future Improvements
+
+- [ ] Vector search for semantic retrieval
+- [ ] Authentication & role-based booking permissions
+- [ ] Redis memory store for conversation history
+- [ ] Multi-agent orchestration
+- [ ] Voice assistant support
+- [ ] Email/SMS notifications for bookings
+- [ ] Calendar integration (Google Calendar, Outlook)
+
+---
+
+## 🤝 Contributing
+
+Contributions are welcome! Please feel free to submit a Pull Request.
+
+1. Fork the repository
+2. Create your feature branch (`git checkout -b feature/AmazingFeature`)
+3. Commit your changes (`git commit -m 'Add some AmazingFeature'`)
+4. Push to the branch (`git push origin feature/AmazingFeature`)
+5. Open a Pull Request
+
+---
+
+## 📄 License
+
+This project is licensed under the MIT License - see the [LICENSE](LICENSE) file for details.
+
+---
 
 ## 👨‍💻 Author
 
-Developed as a comprehensive solution for the College Campus AI Agent assignment.
+**Devarinti Sai Rupesh**
+
+Building production-grade AI systems focused on real-world automation.
+
+- GitHub: [@your-github-username](https://github.com/your-github-username)
+- LinkedIn: [Your LinkedIn](https://linkedin.com/in/your-profile)
+- Email: your.email@example.com
+
+---
+
+## 🙏 Acknowledgments
+
+- [Groq](https://groq.com/) for ultra-fast LLM inference
+- [FastAPI](https://fastapi.tiangolo.com/) for the amazing web framework
+- [MongoDB](https://mongodb.com/) for flexible data storage
+- The open-source community
+
+---
+
+## ⭐ Star History
+
+If you find this project useful, please consider giving it a star! ⭐
+
+---
+
+**Made with ❤️ by Devarinti Sai Rupesh**
