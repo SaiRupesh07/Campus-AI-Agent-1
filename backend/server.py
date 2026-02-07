@@ -10,85 +10,30 @@ from typing import List, Optional, Dict, Any
 import uuid
 from datetime import datetime, timezone
 import json
+from groq import Groq
 
-from groq import Groq   # ✅ NEW
+# ================= ENV =================
 
 ROOT_DIR = Path(__file__).parent
 load_dotenv(ROOT_DIR / '.env')
 
-# MongoDB connection
 mongo_url = os.environ['MONGO_URL']
 client = AsyncIOMotorClient(mongo_url)
 db = client[os.environ['DB_NAME']]
 
-# ✅ GROQ CLIENT
 groq_client = Groq(api_key=os.environ["GROQ_API_KEY"])
 MODEL = "llama-3.3-70b-versatile"
 
-# Create the main app without a prefix
 app = FastAPI(title="College Campus AI Agent API")
-
 api_router = APIRouter(prefix="/api")
 
 sessions: Dict[str, Dict[str, Any]] = {}
 
-# ==================== DATA MODELS ====================
-
-class Event(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str
-    description: str
-    event_type: str
-    date: str
-    start_time: str
-    end_time: str
-    location: str
-    capacity: int
-    registered_count: int = 0
-    status: str = "upcoming"
-    organizer: str
-    tags: List[str] = []
-
-
-class EventCreate(BaseModel):
-    name: str
-    description: str
-    event_type: str
-    date: str
-    start_time: str
-    end_time: str
-    location: str
-    capacity: int
-    organizer: str
-    tags: List[str] = []
-
-
-class Facility(BaseModel):
-    model_config = ConfigDict(extra="ignore")
-    id: str = Field(default_factory=lambda: str(uuid.uuid4()))
-    name: str
-    type: str
-    building: str
-    floor: int
-    capacity: int
-    features: List[str] = []
-    operational_hours: Dict[str, str] = {}
-    status: str = "available"
-
-
-class FacilityCreate(BaseModel):
-    name: str
-    type: str
-    building: str
-    floor: int
-    capacity: int
-    features: List[str] = []
-    operational_hours: Dict[str, str] = {}
-
+# ================= MODELS =================
 
 class Booking(BaseModel):
     model_config = ConfigDict(extra="ignore")
+
     id: str = Field(default_factory=lambda: str(uuid.uuid4()))
     user_name: str
     user_email: str
@@ -105,17 +50,6 @@ class Booking(BaseModel):
     created_at: str = Field(default_factory=lambda: datetime.now(timezone.utc).isoformat())
 
 
-class BookingRequest(BaseModel):
-    user_name: str
-    user_email: str
-    resource_id: str
-    resource_type: str
-    date: str
-    start_time: str
-    end_time: str
-    purpose: str
-
-
 class ChatMessage(BaseModel):
     message: str
     session_id: Optional[str] = None
@@ -129,12 +63,12 @@ class ChatResponse(BaseModel):
     requires_confirmation: bool = False
 
 
-# ==================== AI AGENT ====================
+# ================= AI AGENT =================
 
 class CampusAIAgent:
 
+    # 🔥 UNIVERSAL LLM CALL
     def call_llm(self, system_prompt, user_prompt):
-        """Reusable Groq call"""
 
         completion = groq_client.chat.completions.create(
             model=MODEL,
@@ -147,44 +81,49 @@ class CampusAIAgent:
 
         return completion.choices[0].message.content.strip()
 
+    # SESSION
     def get_or_create_session(self, session_id):
 
         if not session_id or session_id not in sessions:
             session_id = str(uuid.uuid4())
             sessions[session_id] = {
-                "messages": [],
-                "pending_confirmation": None,
-                "context": {}
+                "pending_confirmation": None
             }
 
         return session_id, sessions[session_id]
 
-    # ================= INTENT =================
-
-    async def classify_intent(self, message, session_id):
+    # 🔥 INTENT ROUTER (Bulletproof)
+    async def llm_router(self, message: str):
 
         system = """
-Classify the intent.
+Decide the user intent.
 
-Return ONLY JSON:
+Return ONLY one word:
 
-{
-"intent":"EVENTS_QUERY | FACILITY_QUERY | BOOKING_REQUEST | CONFIRMATION | GENERAL"
-}
+EVENTS_QUERY
+FACILITY_QUERY
+BOOKING_REQUEST
+GENERAL
 """
 
-        try:
-            response = self.call_llm(system, message)
-            return json.loads(response)
-        except:
-            return {"intent": "GENERAL", "entities": {}, "confidence": 0.5}
+        intent = self.call_llm(system, message)
 
-    # ================= RESPONSE =================
+        intent = intent.strip().upper().replace(".", "")
 
-    async def generate_response(self, intent, data, message, session_id):
+        allowed = [
+            "EVENTS_QUERY",
+            "FACILITY_QUERY",
+            "BOOKING_REQUEST",
+            "GENERAL"
+        ]
+
+        return intent if intent in allowed else "GENERAL"
+
+    # RESPONSE
+    async def generate_response(self, intent, data, message):
 
         system = """You are a helpful college campus assistant.
-Keep responses friendly and structured."""
+Keep responses friendly, structured, and professional."""
 
         context = f"""
 User asked: {message}
@@ -194,16 +133,21 @@ Data: {json.dumps(data, indent=2) if data else "None"}
 
         return self.call_llm(system, context)
 
-    # ================= HANDLERS =================
+    # EVENTS
+    async def handle_events_query(self):
+        return await db.events.find(
+            {"status": "upcoming"},
+            {"_id": 0}
+        ).limit(10).to_list(10)
 
-    async def handle_events_query(self, entities):
-        query = {"status": "upcoming"}
-        return await db.events.find(query, {"_id": 0}).limit(10).to_list(10)
+    # FACILITIES
+    async def handle_facility_query(self):
+        return await db.facilities.find(
+            {"status": "available"},
+            {"_id": 0}
+        ).limit(10).to_list(10)
 
-    async def handle_facility_query(self, entities):
-        query = {"status": "available"}
-        return await db.facilities.find(query, {"_id": 0}).limit(10).to_list(10)
-
+    # BOOKING VALIDATION
     async def validate_booking_request(self, message):
 
         system = """
@@ -221,7 +165,12 @@ Return ONLY JSON:
 """
 
         try:
-            booking_data = json.loads(self.call_llm(system, message))
+            raw = self.call_llm(system, message)
+
+            raw = raw.replace("```json", "").replace("```", "").strip()
+
+            booking_data = json.loads(raw)
+
         except:
             return {"valid": False, "message": "Could not understand booking details."}
 
@@ -240,6 +189,7 @@ Return ONLY JSON:
 
         return {"valid": True, "booking_data": booking_data}
 
+    # EXECUTE BOOKING
     async def execute_booking(self, booking_data):
 
         booking = Booking(**booking_data)
@@ -251,12 +201,12 @@ Return ONLY JSON:
 
         return {k: v for k, v in doc.items() if k != "_id"}
 
-    # ================= MAIN =================
-
+    # 🔥 MAIN AGENT LOOP
     async def handle_message(self, message, session_id):
 
         session_id, session = self.get_or_create_session(session_id)
 
+        # Confirmation flow
         if session.get("pending_confirmation"):
 
             if message.lower() in ["yes", "confirm", "ok"]:
@@ -278,16 +228,18 @@ Return ONLY JSON:
                     session_id=session_id
                 )
 
-        intent_data = await self.classify_intent(message, session_id)
-        intent = intent_data.get("intent", "GENERAL")
+        # ROUTE
+        intent = await self.llm_router(message)
 
         if intent == "EVENTS_QUERY":
-            data = await self.handle_events_query({})
-            reply = await self.generate_response(intent, data, message, session_id)
+
+            data = await self.handle_events_query()
+            reply = await self.generate_response(intent, data, message)
 
         elif intent == "FACILITY_QUERY":
-            data = await self.handle_facility_query({})
-            reply = await self.generate_response(intent, data, message, session_id)
+
+            data = await self.handle_facility_query()
+            reply = await self.generate_response(intent, data, message)
 
         elif intent == "BOOKING_REQUEST":
 
@@ -307,7 +259,8 @@ Type YES to confirm.
                 reply = validation["message"]
 
         else:
-            reply = await self.generate_response(intent, None, message, session_id)
+
+            reply = await self.generate_response(intent, None, message)
 
         return ChatResponse(
             response=reply,
@@ -318,7 +271,7 @@ Type YES to confirm.
 
 agent = CampusAIAgent()
 
-# ==================== ROUTES ====================
+# ================= ROUTES =================
 
 @api_router.post("/chat", response_model=ChatResponse)
 async def chat(request: ChatMessage):
