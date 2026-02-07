@@ -68,13 +68,17 @@ class ChatResponse(BaseModel):
 
 class CampusAIAgent:
 
+    # ✅ TOOL DEFINITIONS (UPGRADED)
     TOOLS = [
         {
             "type": "function",
             "function": {
                 "name": "get_events",
-                "description": "Fetch available campus facilities. Use facility_type when user specifies labs, classrooms, auditoriums, sports, etc.",
-                "parameters": {"type": "object", "properties": {}}
+                "description": "Fetch upcoming campus events",
+                "parameters": {
+                    "type": "object",
+                    "properties": {}
+                }
             }
         },
         {
@@ -82,12 +86,21 @@ class CampusAIAgent:
             "function": {
                 "name": "get_facilities",
                 "description": "Fetch available campus facilities. Use facility_type when user specifies labs, classrooms, auditoriums, sports, etc.",
-                "parameters": {"type": "object", "properties": {}}
+                "parameters": {
+                    "type": "object",
+                    "properties": {
+                        "facility_type": {
+                            "type": "string",
+                            "description": "Type of facility such as lab, classroom, auditorium, sports"
+                        }
+                    }
+                }
             }
         }
     ]
 
-    # ⭐ UNIVERSAL LLM CALL
+    # ================= UNIVERSAL LLM =================
+
     def call_llm(self, messages, tools=None):
 
         completion = groq_client.chat.completions.create(
@@ -108,7 +121,6 @@ class CampusAIAgent:
         if not session_id or session_id not in sessions:
             session_id = str(uuid.uuid4())
 
-            # ✅ MEMORY ADDED
             sessions[session_id] = {
                 "pending_confirmation": None,
                 "history": []
@@ -124,14 +136,15 @@ class CampusAIAgent:
             {"_id": 0}
         ).limit(10).to_list(10)
 
-    
     async def get_facilities(self, facility_type=None):
-    query = {"status": "available"}
-    if facility_type:
-        query["type"] = {"$regex": facility_type, "$options": "i"}
+
+        query = {"status": "available"}
+
+        if facility_type:
+            query["type"] = {"$regex": facility_type, "$options": "i"}
 
         return await db.facilities.find(
-            {"status": "available"},
+            query,
             {"_id": 0}
         ).limit(10).to_list(10)
 
@@ -160,7 +173,6 @@ Return ONLY JSON:
         try:
             raw = self.call_llm(messages).content or ""
             raw = raw.replace("```json", "").replace("```", "").strip()
-
             booking_data = json.loads(raw)
 
         except:
@@ -197,10 +209,9 @@ Return ONLY JSON:
     async def handle_message(self, message, session_id):
 
         session_id, session = self.get_or_create_session(session_id)
-
         history = session["history"]
 
-        # 🔥 Confirmation Flow
+        # ✅ Confirmation flow
         if session.get("pending_confirmation"):
 
             if message.lower() in ["yes", "confirm", "ok"]:
@@ -230,14 +241,14 @@ Return ONLY JSON:
                     session_id=session_id
                 )
 
-        # ⭐ MEMORY ENABLED PROMPT
+        # ✅ SYSTEM PROMPT WITH MEMORY
         messages = [
             {
                 "role": "system",
                 "content": """
 You are a smart AI assistant for a college campus.
 
-Remember previous conversation context.
+Remember conversation context.
 Resolve references like:
 - "book it"
 - "that lab"
@@ -250,21 +261,29 @@ Do NOT hallucinate data.
         ]
 
         messages.extend(history)
-
         messages.append({"role": "user", "content": message})
 
         response = self.call_llm(messages, tools=self.TOOLS)
 
-        # 🔥 TOOL CALL
+        # ✅ TOOL CALL DETECTED
         if response.tool_calls:
 
-            tool_name = response.tool_calls[0].function.name
+            tool_call = response.tool_calls[0]
+            tool_name = tool_call.function.name
+
+            args = {}
+            if tool_call.function.arguments:
+                try:
+                    args = json.loads(tool_call.function.arguments)
+                except:
+                    args = {}
 
             if tool_name == "get_events":
                 data = await self.get_events()
 
             elif tool_name == "get_facilities":
-                data = await self.get_facilities()
+                facility_type = args.get("facility_type")
+                data = await self.get_facilities(facility_type)
 
             else:
                 data = {}
@@ -273,15 +292,14 @@ Do NOT hallucinate data.
 
             messages.append({
                 "role": "tool",
-                "tool_call_id": response.tool_calls[0].id,
+                "tool_call_id": tool_call.id,
                 "content": json.dumps(data)
             })
 
             final = self.call_llm(messages)
-
             reply = final.content or "Here is what I found."
 
-            # ✅ SAVE MEMORY
+            # save memory
             history.append({"role": "user", "content": message})
             history.append({"role": "assistant", "content": reply})
 
@@ -296,7 +314,7 @@ Do NOT hallucinate data.
                 data=data
             )
 
-        # 🔥 Booking fallback
+        # ✅ Booking fallback
         if "book" in message.lower():
 
             validation = await self.validate_booking_request(message)
@@ -327,7 +345,6 @@ Type YES to confirm.
         else:
             reply = response.content or "How can I assist you?"
 
-        # ✅ SAVE MEMORY
         history.append({"role": "user", "content": message})
         history.append({"role": "assistant", "content": reply})
 
