@@ -16,7 +16,7 @@
 
 - **Frontend:** [https://YOUR-VERCEL-LINK.vercel.app](https://campus-ai-agent-1.vercel.app/)
 - **Backend API:** [https://YOUR-RENDER-LINK.onrender.com](https://campus-ai-agent.onrender.com/)
-- **Swagger Docs:** [https://YOUR-RENDER-LINK.onrender.com/docs](https://campus-ai-agent.onrender.com//docs)
+- **Swagger Docs:** [https://YOUR-RENDER-LINK.onrender.com/docs](https://campus-ai-agent.onrender.com/docs)
 
 *(Replace with your actual deployment links)*
 
