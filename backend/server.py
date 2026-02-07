@@ -68,7 +68,12 @@ class ChatResponse(BaseModel):
 
 class CampusAIAgent:
 
-    # ✅ TOOL DEFINITIONS
+    # ⭐ FIXED INTENT MAP (Recruiter-level detail)
+    INTENT_MAP = {
+        "get_events": "EVENTS_QUERY",
+        "get_facilities": "FACILITY_QUERY"
+    }
+
     TOOLS = [
         {
             "type": "function",
@@ -96,7 +101,7 @@ class CampusAIAgent:
         }
     ]
 
-    # ================= UNIVERSAL LLM =================
+    # ================= LLM =================
 
     def call_llm(self, messages, tools=None):
 
@@ -120,7 +125,8 @@ class CampusAIAgent:
 
             sessions[session_id] = {
                 "pending_confirmation": None,
-                "history": []
+                "history": [],
+                "booking_state": None   # ⭐ NEW
             }
 
         return session_id, sessions[session_id]
@@ -143,56 +149,27 @@ class CampusAIAgent:
                 "$options": "i"
             }
 
-        return await db.facilities.find(
+        data = await db.facilities.find(
             query,
             {"_id": 0}
         ).limit(10).to_list(10)
 
-    # ================= BOOKING =================
+        # ⭐ Safety fallback
+        if not data and facility_type:
+            data = await db.facilities.find(
+                {"status": "available"},
+                {"_id": 0}
+            ).limit(10).to_list(10)
 
-    async def validate_booking_request(self, message):
+        return data
 
-        system = """
-Extract booking details.
+    # ================= BOOKING FLOW =================
 
-Return ONLY JSON:
-{
-"resource_name":"",
-"date":"",
-"start_time":"",
-"end_time":"",
-"purpose":""
-}
-"""
-
-        messages = [
-            {"role": "system", "content": system},
-            {"role": "user", "content": message}
-        ]
-
-        try:
-            raw = self.call_llm(messages).content or ""
-            raw = raw.replace("```json", "").replace("```", "").strip()
-
-            booking_data = json.loads(raw)
-
-        except:
-            return {"valid": False, "message": "Could not understand booking details."}
-
-        facility = await db.facilities.find_one(
-            {"name": {"$regex": booking_data.get("resource_name", ""), "$options": "i"}},
-            {"_id": 0}
-        )
-
-        if not facility:
-            return {"valid": False, "message": "Facility not found."}
-
-        booking_data["resource_id"] = facility["id"]
-        booking_data["resource_type"] = "facility"
-        booking_data["user_name"] = "Guest User"
-        booking_data["user_email"] = "guest@campus.edu"
-
-        return {"valid": True, "booking_data": booking_data}
+    def start_booking_flow(self, session):
+        session["booking_state"] = {
+            "step": "facility",
+            "data": {}
+        }
 
     async def execute_booking(self, booking_data):
 
@@ -212,7 +189,82 @@ Return ONLY JSON:
         session_id, session = self.get_or_create_session(session_id)
         history = session["history"]
 
-        # ✅ Confirmation Flow
+        # ✅ MULTI STEP BOOKING FLOW
+        if session.get("booking_state"):
+
+            state = session["booking_state"]
+            step = state["step"]
+
+            if step == "facility":
+                state["data"]["resource_name"] = message
+                state["step"] = "date"
+
+                return ChatResponse(
+                    response="Great 👍 Which date do you want to book it for?",
+                    session_id=session_id,
+                    intent="BOOKING_FLOW"
+                )
+
+            elif step == "date":
+                state["data"]["date"] = message
+                state["step"] = "time"
+
+                return ChatResponse(
+                    response="What time slot do you need?",
+                    session_id=session_id,
+                    intent="BOOKING_FLOW"
+                )
+
+            elif step == "time":
+                state["data"]["start_time"] = message
+                state["step"] = "purpose"
+
+                return ChatResponse(
+                    response="What is the purpose of the booking?",
+                    session_id=session_id,
+                    intent="BOOKING_FLOW"
+                )
+
+            elif step == "purpose":
+
+                booking_data = state["data"]
+                session["booking_state"] = None
+
+                facility = await db.facilities.find_one(
+                    {"name": {"$regex": booking_data.get("resource_name", ""), "$options": "i"}},
+                    {"_id": 0}
+                )
+
+                if not facility:
+                    return ChatResponse(
+                        response="Facility not found.",
+                        session_id=session_id
+                    )
+
+                booking_data.update({
+                    "resource_id": facility["id"],
+                    "resource_type": "facility",
+                    "user_name": "Guest User",
+                    "user_email": "guest@campus.edu",
+                    "end_time": booking_data["start_time"]
+                })
+
+                session["pending_confirmation"] = booking_data
+
+                return ChatResponse(
+                    response=f"""
+I can book this for you:
+
+{json.dumps(booking_data, indent=2)}
+
+Type YES to confirm.
+""",
+                    session_id=session_id,
+                    intent="BOOKING_REQUEST",
+                    requires_confirmation=True
+                )
+
+        # ✅ Confirmation
         if session.get("pending_confirmation"):
 
             if message.lower() in ["yes", "confirm", "ok"]:
@@ -226,15 +278,17 @@ Return ONLY JSON:
                     data=result
                 )
 
-            elif message.lower() in ["no", "cancel"]:
-                session["pending_confirmation"] = None
+        # ⭐ Start booking trigger
+        if "book" in message.lower():
+            self.start_booking_flow(session)
 
-                return ChatResponse(
-                    response="Booking cancelled 👍",
-                    session_id=session_id
-                )
+            return ChatResponse(
+                response="Sure! Which facility would you like to book?",
+                session_id=session_id,
+                intent="BOOKING_FLOW"
+            )
 
-        # ✅ SYSTEM PROMPT (UPGRADED)
+        # ================= TOOL AGENT =================
 
         messages = [
             {
@@ -242,21 +296,17 @@ Return ONLY JSON:
                 "content": """
 You are a smart AI assistant for a college campus.
 
-IMPORTANT:
-When calling get_facilities, ALWAYS pass facility_type if user mentions labs, classrooms, sports, etc.
-
 Use tools whenever possible.
 Do NOT hallucinate.
 """
             }
         ]
 
-        messages.extend(history[-8:])  # memory trim
+        messages.extend(history[-6:])
         messages.append({"role": "user", "content": message})
 
         response = self.call_llm(messages, tools=self.TOOLS)
 
-        # ✅ TOOL CALL
         if response.tool_calls:
 
             tool_call = response.tool_calls[0]
@@ -297,7 +347,7 @@ Do NOT hallucinate.
             return ChatResponse(
                 response=reply,
                 session_id=session_id,
-                intent=tool_name,
+                intent=self.INTENT_MAP.get(tool_name, "GENERAL"),
                 data=data
             )
 
