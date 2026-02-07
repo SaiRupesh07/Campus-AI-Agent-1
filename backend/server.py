@@ -73,7 +73,7 @@ class CampusAIAgent:
             "type": "function",
             "function": {
                 "name": "get_events",
-                "description": "Fetch upcoming campus events",
+                "description": "Fetch available campus facilities. Use facility_type when user specifies labs, classrooms, auditoriums, sports, etc.",
                 "parameters": {"type": "object", "properties": {}}
             }
         },
@@ -81,7 +81,7 @@ class CampusAIAgent:
             "type": "function",
             "function": {
                 "name": "get_facilities",
-                "description": "Fetch available campus facilities",
+                "description": "Fetch available campus facilities. Use facility_type when user specifies labs, classrooms, auditoriums, sports, etc.",
                 "parameters": {"type": "object", "properties": {}}
             }
         }
@@ -124,7 +124,12 @@ class CampusAIAgent:
             {"_id": 0}
         ).limit(10).to_list(10)
 
-    async def get_facilities(self):
+    
+    async def get_facilities(self, facility_type=None):
+    query = {"status": "available"}
+    if facility_type:
+        query["type"] = {"$regex": facility_type, "$options": "i"}
+
         return await db.facilities.find(
             {"status": "available"},
             {"_id": 0}
